@@ -1,0 +1,15 @@
+{
+  "name": "xoba-big-idea",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Speak it. Save it. Come back to it.",
+  "workspaces": ["shared", "server", "web"],
+  "scripts": {
+    "dev": "npm run dev -w server & npm run dev -w web",
+    "build": "npm run build -w web && npm run build -w server",
+    "start": "npm run start -w server",
+    "test": "npm test -w server && npm test -w web",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
+    "e2e": "npm run e2e -w web"
+  }
+}

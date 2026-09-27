@@ -69,3 +69,12 @@ npm start
 Put it behind HTTPS (Caddy, nginx or a tunnel), because browsers only allow the
 microphone on HTTPS. Back up `DATA_DIR` (or the Postgres database plus `DATA_DIR/audio`),
 and keep exporting from the app too.
+
+## D. Railway (one small always-on server)
+
+`railway.json` at the repo root tells Railway to run `npm run build` then `npm start`.
+
+1. Create a Railway project from this GitHub repo.
+2. Add a **volume** mounted at `/data` and set `DATA_DIR=/data`, so ideas and audio survive redeploys.
+3. Set `APP_TOKEN` (and optionally `AI_PROVIDER`, `ANTHROPIC_API_KEY`, `TRANSCRIBE_PROVIDER`, `OPENAI_API_KEY`, `AI_MONTHLY_CAP_USD`).
+4. Generate a domain (or attach your own), open it on your phone, and enter the app token in Settings.

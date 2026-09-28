@@ -1,17 +1,21 @@
 import { ProviderError, type Transcriber } from "./types.js";
 
 /**
- * OpenAI Whisper over HTTP. No `language` and no `prompt` are sent, so the model
- * transcribes what it hears in whatever language it hears it, without steering.
+ * OpenAI Whisper over HTTP. A language hint stops Whisper guessing the wrong
+ * language for a Nigerian accent. For English we also send a short vocabulary
+ * hint so Pidgin words are spelled the way people write them. Neither changes
+ * or tidies the words; the result is still what was heard.
  * Priced at USD 0.006 per audio minute (override with OPENAI_TRANSCRIBE_PRICE_PER_MIN).
  */
+export const PIDGIN_HINT = "Nigerian English and Pidgin, e.g. wetin, abeg, oya, dey, na so, wahala, sabi, omo.";
+
 export function openaiTranscriber(opts: { apiKey?: string; model?: string; pricePerMin?: number; baseUrl?: string }): Transcriber {
   const model = opts.model || "whisper-1";
   const pricePerMin = opts.pricePerMin ?? 0.006;
   return {
     name: `openai:${model}`,
     unavailableReason: () => (opts.apiKey ? undefined : "OPENAI_API_KEY is not set"),
-    async transcribe(audio, mime, durationMs) {
+    async transcribe(audio, mime, durationMs, language) {
       if (!opts.apiKey) throw new ProviderError("OPENAI_API_KEY is not set", false);
       if (audio.byteLength > 25 * 1024 * 1024) {
         throw new ProviderError("Recording is over 25 MB, too long for this transcription provider. The audio is kept.", false);
@@ -21,6 +25,8 @@ export function openaiTranscriber(opts: { apiKey?: string; model?: string; price
       form.append("file", new Blob([audio as Uint8Array<ArrayBuffer>], { type: mime }), `audio.${ext}`);
       form.append("model", model);
       form.append("response_format", "json");
+      if (language) form.append("language", language);
+      if (language === "en") form.append("prompt", PIDGIN_HINT);
       const res = await fetch(`${opts.baseUrl ?? "https://api.openai.com/v1"}/audio/transcriptions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${opts.apiKey}` },

@@ -58,7 +58,12 @@ function EntryView({ idea, entry }: { idea: Idea; entry: Entry }) {
           {entry.audioDurationMs ? <span className="muted small">{fmtDuration(entry.audioDurationMs)}</span> : null}
           <div className="transcript">
             <span className="muted small">
-              Transcript (automatic{entry.transcriptEditedByMe ? ", corrected by you" : ""}). The recording is the original.
+              {entry.transcriptEditedByMe
+                ? "Transcript, corrected by you."
+                : entry.transcriptSource === "live"
+                  ? "Transcript, written live as you spoke."
+                  : "Transcript (automatic)."}{" "}
+              The recording is the original.
             </span>
             {editing ? (
               <>
@@ -75,9 +80,16 @@ function EntryView({ idea, entry }: { idea: Idea; entry: Entry }) {
             ) : entry.transcriptStatus === "done" ? (
               <>
                 <p className="words transcript-text">{entry.transcript || <em className="muted">(no words heard)</em>}</p>
-                <button type="button" className="link small" onClick={() => (setDraft(entry.transcript ?? ""), setEditing(true))}>
-                  Correct transcript
-                </button>
+                <div className="row">
+                  <button type="button" className="link small" onClick={() => (setDraft(entry.transcript ?? ""), setEditing(true))}>
+                    Correct transcript
+                  </button>
+                  {!entry.transcriptEditedByMe && (
+                    <button type="button" className="link small" onClick={() => retryTranscript(idea.id, entry.id).then(() => syncNow())}>
+                      Transcribe again with AI
+                    </button>
+                  )}
+                </div>
               </>
             ) : entry.transcriptStatus === "failed" ? (
               <p className="muted small">

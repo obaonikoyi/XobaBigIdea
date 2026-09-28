@@ -38,6 +38,8 @@ export interface CaptureInput {
   audio?: { id: string; mime: string; durationMs: number };
   /** When the capture started (recording start). Defaults to now. */
   at?: Date;
+  /** Words heard live on the device while recording. */
+  liveTranscript?: string;
 }
 
 function makeEntry(kind: Entry["kind"], input: CaptureInput, question?: string): Entry {
@@ -51,6 +53,10 @@ function makeEntry(kind: Entry["kind"], input: CaptureInput, question?: string):
     audioMime: input.audio?.mime,
     audioDurationMs: input.audio?.durationMs,
     transcriptStatus: input.audio ? "pending" : "none",
+    // Live words count as the transcript; "Transcribe again" can still ask the server.
+    ...(input.audio && input.liveTranscript?.trim()
+      ? { transcript: input.liveTranscript.trim(), transcriptStatus: "done" as const, transcriptSource: "live" as const }
+      : {}),
   };
 }
 
@@ -112,7 +118,7 @@ export function setTranscript(ideaId: string, entryId: string, transcript: strin
   return update(ideaId, (i) => {
     const e = i.entries.find((x) => x.id === entryId);
     // Never overwrite a transcript the user corrected by hand.
-    if (e && !e.transcriptEditedByMe) Object.assign(e, { transcript, transcriptStatus: status });
+    if (e && !e.transcriptEditedByMe) Object.assign(e, { transcript, transcriptStatus: status, transcriptSource: "server" });
   });
 }
 

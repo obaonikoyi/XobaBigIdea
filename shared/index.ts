@@ -59,6 +59,8 @@ export interface Entry {
   transcriptStatus: TranscriptStatus;
   /** True if the user corrected the transcript by hand. */
   transcriptEditedByMe?: boolean;
+  /** Where the transcript came from: typed live on the device while speaking, or made by the server afterwards. */
+  transcriptSource?: "live" | "server";
 }
 
 export interface FollowUp {
@@ -73,6 +75,19 @@ export interface AiInfo {
   provider: string;
   /** Number of entries the last suggestion was based on. */
   basedOnEntries: number;
+}
+
+/** Languages offered for speech. `code` is used for live words in the browser, `whisper` for server transcription. */
+export const SPEECH_LANGUAGES = [
+  { code: "en-NG", label: "English (Nigeria), Pidgin", whisper: "en" },
+  { code: "yo-NG", label: "Yoruba", whisper: "yo" },
+  { code: "en-GB", label: "English (UK)", whisper: "en" },
+  { code: "en-US", label: "English (US)", whisper: "en" },
+] as const;
+export type SpeechLanguage = (typeof SPEECH_LANGUAGES)[number]["code"];
+
+export function whisperLanguage(code: string): string | undefined {
+  return SPEECH_LANGUAGES.find((l) => l.code === code)?.whisper;
 }
 
 export interface Idea {

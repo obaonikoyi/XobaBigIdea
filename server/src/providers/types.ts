@@ -41,7 +41,8 @@ export interface Transcriber {
   readonly name: string;
   /** Returns a reason string if the provider cannot run (e.g. missing key). */
   unavailableReason(): string | undefined;
-  transcribe(audio: Uint8Array, mime: string, durationMs: number): Promise<ProviderResult<TranscribeResult>>;
+  /** `language` is an ISO-639-1 hint (e.g. "en", "yo") so the model does not guess the wrong language. */
+  transcribe(audio: Uint8Array, mime: string, durationMs: number, language?: string): Promise<ProviderResult<TranscribeResult>>;
 }
 
 /** Turns the user's words into card suggestions. Never rewrites the words themselves. */

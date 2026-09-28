@@ -74,7 +74,9 @@ export const api = {
     const res = await call(`/api/audio/${id}`, {}, 300_000);
     return { bytes: await res.arrayBuffer(), mime: res.headers.get("Content-Type") ?? "audio/webm" };
   },
-  transcribe: async (audioId: string, durationMs: number) =>
-    (await (await call(`/api/transcribe/${audioId}?durationMs=${Math.round(durationMs)}`, { method: "POST" }, 300_000)).json()) as TranscribeResult,
+  transcribe: async (audioId: string, durationMs: number, language?: string) =>
+    (await (
+      await call(`/api/transcribe/${audioId}?durationMs=${Math.round(durationMs)}${language ? `&language=${language}` : ""}`, { method: "POST" }, 300_000)
+    ).json()) as TranscribeResult,
   enrich: async (req: EnrichRequest) => (await (await call("/api/enrich", jsonInit("POST", req), 120_000)).json()) as EnrichResult,
 };

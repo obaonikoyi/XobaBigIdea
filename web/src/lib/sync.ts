@@ -6,6 +6,8 @@ import * as db from "./db";
 import { api, ApiError } from "./api";
 import { applyEnrichment, setTranscript } from "./ideas";
 import { emitChange } from "./events";
+import { whisperLanguage } from "@xoba/shared";
+import { getSpeechPrefs } from "./prefs";
 
 export interface SyncState {
   online: boolean;
@@ -76,6 +78,7 @@ function needsEnrichment(idea: Idea) {
 /** Transcribe pending audio and enrich ideas. Stops quietly when AI is unavailable. */
 export async function processAi(ai: AiStatus) {
   const ideas = await db.allIdeas();
+  const language = whisperLanguage((await getSpeechPrefs()).lang);
   if (ai.transcribe.available) {
     outer: for (const idea of ideas) {
       for (const e of idea.entries) {
@@ -83,7 +86,7 @@ export async function processAi(ai: AiStatus) {
         const audio = await db.getAudio(e.audioId);
         if (audio && !audio.uploaded) continue; // push() uploads it first
         try {
-          const r = await api.transcribe(e.audioId, e.audioDurationMs ?? audio?.durationMs ?? 60_000);
+          const r = await api.transcribe(e.audioId, e.audioDurationMs ?? audio?.durationMs ?? 60_000, language);
           await setTranscript(idea.id, e.id, r.text, "done");
         } catch (err) {
           if (err instanceof ApiError && err.aiUnavailable) break outer;

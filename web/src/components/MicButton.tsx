@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { canRecord, VoiceRecorder, type RecordingTarget } from "../lib/recorder";
+import { canRecord, VoiceRecorder, type LiveWords, type RecordingTarget } from "../lib/recorder";
 import { fmtDuration } from "../lib/format";
 import { syncNow } from "../lib/sync";
 
@@ -20,6 +20,7 @@ export function MicButton({ target, getText, onSaved, big, label = "Tap to speak
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState("");
+  const [live, setLive] = useState<LiveWords>({ text: "" });
 
   useEffect(() => {
     if (!recording) return;
@@ -39,7 +40,8 @@ export function MicButton({ target, getText, onSaved, big, label = "Tap to speak
     try {
       if (!recording) {
         rec.current = new VoiceRecorder();
-        await rec.current.start(target, getText?.() ?? "");
+        setLive({ text: "" });
+        await rec.current.start(target, getText?.() ?? "", setLive);
         setElapsed(0);
         setRecording(true);
       } else {
@@ -95,6 +97,17 @@ export function MicButton({ target, getText, onSaved, big, label = "Tap to speak
           label
         )}
       </div>
+      {recording && (
+        <div className={`live-words ${big ? "" : "small"}`} data-testid="live-words" aria-live="polite">
+          {live.text ? (
+            <p>{live.text}</p>
+          ) : live.failed ? (
+            <p className="muted small">Live words aren't available here. Your voice is still being recorded and will be written out afterwards.</p>
+          ) : (
+            <p className="muted">Listening… your words will appear here.</p>
+          )}
+        </div>
+      )}
       {error && <p className="error">{error}</p>}
     </div>
   );

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { HealthResponse } from "@xoba/shared";
+import { SPEECH_LANGUAGES, type HealthResponse, type SpeechLanguage } from "@xoba/shared";
+import { getSpeechPrefs, saveSpeechPrefs, type SpeechPrefs } from "../lib/prefs";
+import { liveWordsSupported } from "../lib/speech";
 import { api, getSettings, saveSettings, type Settings as S } from "../lib/api";
 import { buildExport, downloadBytes, restoreExport } from "../lib/exportRestore";
 import { syncNow } from "../lib/sync";
@@ -14,12 +16,14 @@ export function Settings() {
   const [restoreMsg, setRestoreMsg] = useState("");
   const [audioMb, setAudioMb] = useState<number>();
   const [persisted, setPersisted] = useState<boolean>();
+  const [speech, setSpeech] = useState<SpeechPrefs | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const ideas = useIdeas();
   const sync = useSyncState();
 
   useEffect(() => {
     getSettings().then(setS);
+    getSpeechPrefs().then(setSpeech);
     audioMeta().then((a) => setAudioMb(a.reduce((n, x) => n + x.size, 0) / 1024 / 1024));
     navigator.storage?.persisted?.().then(setPersisted);
   }, [ideas]);
@@ -75,6 +79,48 @@ export function Settings() {
         <p className="muted small">Restore adds missing ideas and recordings and keeps the newest version of each idea. It never deletes anything.</p>
         {restoreMsg && <p role="status" data-testid="restore-msg">{restoreMsg}</p>}
       </section>
+
+      {speech && (
+        <section>
+          <h2>Speaking</h2>
+          <label>
+            I mostly speak
+            <select
+              aria-label="Speech language"
+              value={speech.lang}
+              onChange={(e) => {
+                const next = { ...speech, lang: e.target.value as SpeechLanguage };
+                setSpeech(next);
+                void saveSpeechPrefs(next);
+              }}
+            >
+              {SPEECH_LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={speech.live}
+              onChange={(e) => {
+                const next = { ...speech, live: e.target.checked };
+                setSpeech(next);
+                void saveSpeechPrefs(next);
+              }}
+            />{" "}
+            Show my words on screen while I speak
+          </label>
+          <p className="muted small">
+            {liveWordsSupported()
+              ? "Live words use your phone's own speech recognition, which is free. The recording is always kept, and AI can transcribe it again later."
+              : "This browser can't show live words. Recordings are still saved and transcribed afterwards."}{" "}
+            The language also helps the AI transcription so it doesn't guess the wrong language.
+          </p>
+        </section>
+      )}
 
       <section>
         <h2>Sync server</h2>

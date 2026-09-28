@@ -126,3 +126,24 @@ describe("AI and the spending cap", () => {
     expect((await res.json()).text).toContain("4 bytes");
   });
 });
+
+describe("transcription language hint", () => {
+  it("passes a valid language to the provider and ignores junk", async () => {
+    const seen: (string | undefined)[] = [];
+    const { call } = await makeApp({
+      transcriber: {
+        name: "spy",
+        unavailableReason: () => undefined,
+        transcribe: async (_a, _m, _d, language) => {
+          seen.push(language);
+          return { result: { text: "ok", provider: "spy" }, costUsd: 0 };
+        },
+      },
+    });
+    await call("/api/audio/a1", { method: "PUT", body: new Uint8Array([1]), headers: { "Content-Type": "audio/webm" } });
+    await call("/api/transcribe/a1?language=yo", { method: "POST" });
+    await call("/api/transcribe/a1?language=../../x", { method: "POST" });
+    await call("/api/transcribe/a1", { method: "POST" });
+    expect(seen).toEqual(["yo", undefined, undefined]);
+  });
+});

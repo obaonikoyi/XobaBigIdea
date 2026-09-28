@@ -2,6 +2,8 @@
 // so closing the app or a crash mid-song loses at most about a second.
 import * as db from "./db";
 import { addThought, answerFollowUp, createIdea, newId, now } from "./ideas";
+import { LiveTranscriber } from "./speech";
+import { getSpeechPrefs } from "./prefs";
 
 export interface RecordingTarget {
   /** Add to this idea instead of creating a new one. */
@@ -19,6 +21,14 @@ interface Session {
   startedAt: string;
   /** Text typed before recording started, saved with the audio. */
   text: string;
+  /** Words heard live so far. Saved every few seconds so a crash keeps them. */
+  liveText?: string;
+}
+
+export interface LiveWords {
+  text: string;
+  /** Set when live words stopped working (the recording carries on regardless). */
+  failed?: string;
 }
 
 const SESSION_PREFIX = "recording:";
@@ -39,6 +49,8 @@ export class VoiceRecorder {
   private seq = 0;
   private writes: Promise<void>[] = [];
   private startMs = 0;
+  private live?: LiveTranscriber;
+  private liveSaveTimer?: ReturnType<typeof setInterval>;
 
   get active() {
     return !!this.rec;
@@ -52,7 +64,8 @@ export class VoiceRecorder {
     return this.rec ? Date.now() - this.startMs : 0;
   }
 
-  async start(target: RecordingTarget = {}, text = "") {
+  /** onLive receives the words heard so far, as they come in. */
+  async start(target: RecordingTarget = {}, text = "", onLive?: (w: LiveWords) => void) {
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
     const mime = pickMime();
     const rec = new MediaRecorder(this.stream, mime ? { mimeType: mime } : undefined);
@@ -78,6 +91,35 @@ export class VoiceRecorder {
     rec.start(TIMESLICE_MS);
     this.rec = rec;
     this.startMs = Date.now();
+    await this.startLiveWords(onLive);
+  }
+
+  private async startLiveWords(onLive?: (w: LiveWords) => void) {
+    const prefs = await getSpeechPrefs().catch(() => null);
+    if (!prefs?.live || !this.session) return;
+    const session = this.session;
+    const live = new LiveTranscriber(prefs.lang, (t) => {
+      session.liveText = t;
+      onLive?.({ text: t, failed: live.failed });
+    });
+    this.live = live;
+    live.start(this.stream?.getAudioTracks()[0]);
+    if (live.failed) onLive?.({ text: "", failed: live.failed });
+    let saved = "";
+    this.liveSaveTimer = setInterval(() => {
+      if (session.liveText && session.liveText !== saved) {
+        saved = session.liveText;
+        void db.setMeta(SESSION_PREFIX + session.audioId, session);
+      }
+    }, 3000);
+  }
+
+  private async stopLiveWords(session: Session) {
+    clearInterval(this.liveSaveTimer);
+    if (!this.live) return;
+    const text = await this.live.stop();
+    if (text) session.liveText = text;
+    this.live = undefined;
   }
 
   /** Stop and save. Returns the idea id the recording was saved to. */
@@ -92,6 +134,7 @@ export class VoiceRecorder {
     });
     this.stream?.getTracks().forEach((t) => t.stop());
     await Promise.all(this.writes);
+    await this.stopLiveWords(session);
     this.rec = undefined;
     this.stream = undefined;
     this.session = undefined;
@@ -103,6 +146,9 @@ export class VoiceRecorder {
   /** Stop without saving (the user pressed cancel). */
   async discard() {
     const session = this.session;
+    clearInterval(this.liveSaveTimer);
+    this.live?.abort();
+    this.live = undefined;
     if (this.rec && this.rec.state !== "inactive") this.rec.stop();
     this.stream?.getTracks().forEach((t) => t.stop());
     await Promise.all(this.writes);
@@ -140,7 +186,12 @@ async function finalize(s: Session, durationMs: number) {
 }
 
 async function saveEntry(s: Session, audio: db.AudioRecord | undefined) {
-  const input = { text: s.text, at: new Date(s.startedAt), audio: audio && { id: audio.id, mime: audio.mime, durationMs: audio.durationMs } };
+  const input = {
+    text: s.text,
+    at: new Date(s.startedAt),
+    audio: audio && { id: audio.id, mime: audio.mime, durationMs: audio.durationMs },
+    liveTranscript: s.liveText,
+  };
   const existing = await db.getIdea(s.ideaId);
   if (existing?.entries.some((e) => e.audioId === s.audioId)) return; // already saved
   if (s.isNew && !existing) await createIdea(input, s.ideaId);

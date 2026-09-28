@@ -97,3 +97,9 @@ label { display: block; margin: 10px 0; }
 .player { width: 100%; margin-top: 6px; }
 .settings section { margin-bottom: 28px; }
 .file-label input { margin-top: 6px; }
+.live-words { width: 100%; background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 10px 14px; min-height: 56px; }
+.live-words p { margin: 0; white-space: pre-wrap; font-size: 1.1rem; }
+.live-words.small p { font-size: 0.95rem; }
+.mic:not(.mic-big) .live-words { flex-basis: 100%; }
+.mic:not(.mic-big) { flex-wrap: wrap; }
+label.check { display: flex; align-items: center; gap: 8px; }

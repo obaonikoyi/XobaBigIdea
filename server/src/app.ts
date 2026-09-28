@@ -149,7 +149,9 @@ export function createApp(deps: AppDeps) {
     const blob = await deps.blobs.get(id);
     if (!blob) return c.json(err("not_found", "Upload the audio first"), 404);
     const durationMs = Math.max(0, Number(c.req.query("durationMs")) || 0) || 60_000;
-    const r = await withBudget("transcribe", deps.transcriber.name, () => deps.transcriber.transcribe(blob.bytes, blob.mime, durationMs));
+    const lang = c.req.query("language");
+    const language = lang && /^[a-z]{2}$/.test(lang) ? lang : undefined;
+    const r = await withBudget("transcribe", deps.transcriber.name, () => deps.transcriber.transcribe(blob.bytes, blob.mime, durationMs, language));
     return r.ok ? c.json(r.result) : c.json(r.body, r.status as 402);
   });
 

@@ -21,4 +21,12 @@ describe("interrupted recording", () => {
     expect(await recoverInterruptedRecordings()).toBe(0);
     expect((await db.getIdea("idea1"))?.entries).toHaveLength(1);
   });
+
+  it("keeps the live words heard before the app closed, as the transcript", async () => {
+    await db.setMeta("recording:aud2", { audioId: "aud2", ideaId: "idea2", isNew: true, mime: "audio/webm", startedAt: "2026-09-20T21:15:00.000Z", text: "", liveText: "oya make we go" });
+    await db.putChunk({ audioId: "aud2", seq: 0, bytes: new Uint8Array([1]).buffer });
+    await recoverInterruptedRecordings();
+    const e = (await db.getIdea("idea2"))!.entries[0];
+    expect(e).toMatchObject({ transcript: "oya make we go", transcriptStatus: "done", transcriptSource: "live", audioId: "aud2" });
+  });
 });

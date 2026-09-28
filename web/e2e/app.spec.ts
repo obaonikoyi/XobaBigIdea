@@ -144,3 +144,30 @@ test("7. a recording cut off by closing the app is recovered on reopen", async (
   await page.getByTestId("library-list").getByRole("link").first().click();
   await expect(page.getByTestId("audio-player")).toBeVisible();
 });
+
+test("8. words appear live while speaking and are saved with the recording", async ({ page }) => {
+  // Stand-in for the phone's speech recognition: "hears" two phrases.
+  await page.addInitScript(() => {
+    class FakeRec {
+      lang = ""; continuous = false; interimResults = false;
+      onresult: ((e: unknown) => void) | null = null; onerror = null; onend: (() => void) | null = null;
+      start() {
+        const say = (t: string, isFinal: boolean, ms: number) =>
+          setTimeout(() => this.onresult?.({ resultIndex: 0, results: [{ isFinal, 0: { transcript: t } }] }), ms);
+        say("wetin dey", false, 300);
+        say("wetin dey happen for Lagos", true, 700);
+      }
+      stop() { setTimeout(() => this.onend?.(), 10); }
+      abort() { this.stop(); }
+    }
+    (window as unknown as { SpeechRecognition: unknown }).SpeechRecognition = FakeRec;
+  });
+  await page.goto(NO_AI);
+  await page.getByRole("button", { name: "Start recording", exact: true }).click();
+  await expect(page.getByTestId("live-words")).toContainText("wetin dey happen for Lagos");
+  await page.getByRole("button", { name: "Stop and save recording", exact: true }).click();
+  await page.getByRole("button", { name: "Open card" }).click();
+  await expect(page.getByTestId("entry").getByText("wetin dey happen for Lagos")).toBeVisible();
+  await expect(page.getByText("Transcript, written live as you spoke.")).toBeVisible();
+  await expect(page.getByTestId("audio-player")).toBeVisible();
+});

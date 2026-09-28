@@ -21,10 +21,10 @@ export function workersAiTranscriber(ai: Ai | undefined): Transcriber {
   return {
     name: `workers-ai:${WHISPER_MODEL}`,
     unavailableReason: () => (ai ? undefined : "Workers AI binding (AI) is missing"),
-    async transcribe(audio, _mime, durationMs) {
+    async transcribe(audio, _mime, durationMs, language) {
       if (!ai) throw new ProviderError("Workers AI binding missing", false);
       try {
-        const out = (await ai.run(WHISPER_MODEL as never, { audio: toBase64(audio) } as never)) as { text?: string };
+        const out = (await ai.run(WHISPER_MODEL as never, { audio: toBase64(audio), ...(language ? { language } : {}) } as never)) as { text?: string };
         return {
           result: { text: out.text ?? "", provider: `workers-ai:${WHISPER_MODEL}` },
           costUsd: (Math.max(durationMs, 1000) / 60_000) * WHISPER_USD_PER_MIN,

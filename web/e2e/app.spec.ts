@@ -171,3 +171,39 @@ test("8. words appear live while speaking and are saved with the recording", asy
   await expect(page.getByText("Transcript, written live as you spoke.")).toBeVisible();
   await expect(page.getByTestId("audio-player")).toBeVisible();
 });
+
+test("9. sign in on two devices and see the same ideas", async ({ browser }) => {
+  const LOGIN = "http://localhost:8792";
+  const laptop = await (await browser.newContext({ permissions: ["microphone"] })).newPage();
+  await laptop.goto(LOGIN);
+  await expect(laptop.getByRole("button", { name: "Sign in" })).toBeVisible();
+  await laptop.getByLabel("Password", { exact: true }).fill("not-it");
+  await laptop.getByRole("button", { name: "Sign in" }).click();
+  await expect(laptop.getByRole("alert")).toContainText("isn't right");
+  await laptop.getByLabel("Password", { exact: true }).fill("e2e-pass");
+  await laptop.getByRole("button", { name: "Sign in" }).click();
+  await expect(laptop.getByRole("button", { name: "Save idea" })).toBeVisible();
+  await captureText(laptop, "Laptop idea: Yoruba film night");
+  await expect(laptop.getByTestId("sync-badge")).toContainText("Synced", { timeout: 15_000 });
+
+  // A second, separate browser = another device.
+  const phone = await (await browser.newContext()).newPage();
+  await phone.goto(LOGIN);
+  await phone.getByLabel("Password", { exact: true }).fill("e2e-pass");
+  await phone.getByRole("button", { name: "Sign in" }).click();
+  await nav(phone, "Library").click();
+  await expect(phone.getByTestId("library-list")).toContainText("Laptop idea: Yoruba film night", { timeout: 15_000 });
+
+  // Sign out on the phone from Settings.
+  await nav(phone, "Settings").click();
+  await expect(phone.getByTestId("signed-in")).toContainText("2 devices signed in");
+  await phone.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(phone.getByRole("status").filter({ hasText: "Signed out" })).toBeVisible();
+});
+
+test("10. 'Not now' keeps the app usable on this device without signing in", async ({ page }) => {
+  await page.goto("http://localhost:8792");
+  await page.getByRole("button", { name: /Not now/ }).click();
+  await captureText(page, "Captured before signing in");
+  await expect(page.getByTestId("statusbar")).toContainText("Not signed in");
+});

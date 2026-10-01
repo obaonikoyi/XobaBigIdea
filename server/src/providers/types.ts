@@ -12,6 +12,21 @@ export interface IdeaStore {
   /** Spending ledger for the AI cap. */
   recordUsage(u: UsageRecord): Promise<void>;
   monthSpendUsd(month: string): Promise<number>;
+  /** Login sessions. Only a hash of each session token is stored. */
+  createSession(s: SessionRecord): Promise<void>;
+  findSession(tokenHash: string): Promise<SessionRecord | null>;
+  touchSession(tokenHash: string, at: string): Promise<void>;
+  deleteSession(tokenHash: string): Promise<void>;
+  deleteAllSessions(): Promise<void>;
+  countSessions(): Promise<number>;
+}
+
+export interface SessionRecord {
+  tokenHash: string;
+  createdAt: string;
+  lastSeenAt: string;
+  /** Rough device description, e.g. "Android · Chrome", to help you recognise it. */
+  device: string;
 }
 
 export interface UsageRecord {

@@ -1,8 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
 // Two servers: one with (fake) AI, one with AI switched off. Both serve the built app.
-const server = (port: number, ai: string, dir: string) =>
-  `rm -rf ${dir} && DATA_DIR=${dir} PORT=${port} AI_PROVIDER=${ai} TRANSCRIBE_PROVIDER=${ai} WEB_DIST=dist node --import tsx ../server/src/node.ts`;
+const server = (port: number, ai: string, dir: string, extra = "") =>
+  `rm -rf ${dir} && ${extra} DATA_DIR=${dir} PORT=${port} AI_PROVIDER=${ai} TRANSCRIBE_PROVIDER=${ai} WEB_DIST=dist node --import tsx ../server/src/node.ts`;
 
 export default defineConfig({
   testDir: "e2e",
@@ -20,5 +20,6 @@ export default defineConfig({
   webServer: [
     { command: server(8790, "fake", "../.e2e-data/ai"), url: "http://localhost:8790/api/ping", reuseExistingServer: false, stdout: "pipe" },
     { command: server(8791, "none", "../.e2e-data/noai"), url: "http://localhost:8791/api/ping", reuseExistingServer: false, stdout: "pipe" },
+    { command: server(8792, "fake", "../.e2e-data/login", "APP_PASSWORD=e2e-pass"), url: "http://localhost:8792/api/ping", reuseExistingServer: false, stdout: "pipe" },
   ],
 });

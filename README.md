@@ -64,6 +64,8 @@ To try it without any API keys, run with fake AI:
 To work on the code, run `npm run dev -w server` and `npm run dev -w web`, then open
 http://localhost:5173 (Vite proxies `/api` to port 8787).
 
+To sign in on your phone and laptop, set `APP_PASSWORD` (see docs/HOSTING.md).
+
 Microphone access needs HTTPS or `localhost`. To use it on your phone, deploy it
 (see hosting) or put it behind an HTTPS tunnel.
 

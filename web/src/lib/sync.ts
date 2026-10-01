@@ -3,7 +3,7 @@
 // Nothing here ever blocks capture, browsing or replay.
 import type { AiStatus, Idea } from "@xoba/shared";
 import * as db from "./db";
-import { api, ApiError } from "./api";
+import { api, ApiError, auth, getSettings } from "./api";
 import { applyEnrichment, setTranscript } from "./ideas";
 import { emitChange } from "./events";
 import { whisperLanguage } from "@xoba/shared";
@@ -14,6 +14,8 @@ export interface SyncState {
   serverReachable: boolean | null;
   lastSyncAt?: string;
   lastError?: string;
+  /** The server needs this device to sign in before it can sync. */
+  authNeeded?: boolean;
   pending: number;
   ai?: AiStatus;
   running: boolean;
@@ -129,17 +131,18 @@ export function syncNow(): Promise<void> {
       again = false;
       set({ running: true });
       try {
+        if (!(await getSettings()).token && (await auth.info()).required) throw new ApiError("Please sign in", 401, "unauthorized");
         await push();
         await pull();
         const health = await api.health();
-        set({ serverReachable: true, ai: health.ai, lastError: undefined });
+        set({ serverReachable: true, ai: health.ai, lastError: undefined, authNeeded: false });
         await processAi(health.ai);
         await push(); // send transcripts and suggestions back up
         set({ lastSyncAt: new Date().toISOString() });
       } catch (err) {
         const unreachable = !(err instanceof ApiError);
-        const message = err instanceof ApiError && err.status === 401 ? "wrong app token" : (err as Error).message;
-        set({ serverReachable: unreachable ? false : true, lastError: unreachable ? undefined : message });
+        if (err instanceof ApiError && err.status === 401) set({ serverReachable: true, authNeeded: true, lastError: undefined });
+        else set({ serverReachable: unreachable ? false : true, lastError: unreachable ? undefined : (err as Error).message });
       } finally {
         set({ running: false, pending: (await db.outboxIds()).length });
       }

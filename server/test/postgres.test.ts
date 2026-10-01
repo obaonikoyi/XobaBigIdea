@@ -11,6 +11,7 @@ describe.skipIf(!url)("postgres store", () => {
     const db = await openPostgres(url!);
     await db.run("DROP TABLE IF EXISTS ideas");
     await db.run("DROP TABLE IF EXISTS ai_usage");
+    await db.run("DROP TABLE IF EXISTS sessions");
     const store = new SqlIdeaStore(db);
     await store.init();
     await store.putIdea(makeIdea({ updatedAt: "2026-09-02T00:00:00.000Z", status: "later" }), "2026-09-02T00:00:00.000Z");
@@ -20,6 +21,12 @@ describe.skipIf(!url)("postgres store", () => {
     await store.recordUsage({ id: "u1", at: "x", month: "2026-09", kind: "enrich", provider: "p", costUsd: 0.25 });
     await store.recordUsage({ id: "u2", at: "x", month: "2026-09", kind: "enrich", provider: "p", costUsd: 0.5 });
     expect(await store.monthSpendUsd("2026-09")).toBeCloseTo(0.75);
+    await store.createSession({ tokenHash: "h1", createdAt: "a", lastSeenAt: "a", device: "Android · Chrome" });
+    await store.touchSession("h1", "b");
+    expect(await store.findSession("h1")).toMatchObject({ lastSeenAt: "b", device: "Android · Chrome" });
+    expect(await store.countSessions()).toBe(1);
+    await store.deleteAllSessions();
+    expect(await store.findSession("h1")).toBeNull();
     await db.close();
   });
 });

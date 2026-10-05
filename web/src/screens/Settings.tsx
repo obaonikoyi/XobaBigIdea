@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { SPEECH_LANGUAGES, type HealthResponse, type SpeechLanguage } from "@xoba/shared";
 import { getSpeechPrefs, saveSpeechPrefs, type SpeechPrefs } from "../lib/prefs";
 import { liveWordsSupported } from "../lib/speech";
-import { api, getSettings, saveSettings, type Settings as S } from "../lib/api";
+import { api, auth, getSettings, saveSettings, type Settings as S } from "../lib/api";
+import { wipeAll } from "../lib/db";
+import { emitChange } from "../lib/events";
 import { buildExport, downloadBytes, restoreExport } from "../lib/exportRestore";
 import { syncNow } from "../lib/sync";
 import { useIdeas, useSyncState } from "../lib/hooks";
@@ -17,6 +19,7 @@ export function Settings() {
   const [audioMb, setAudioMb] = useState<number>();
   const [persisted, setPersisted] = useState<boolean>();
   const [speech, setSpeech] = useState<SpeechPrefs | null>(null);
+  const [devices, setDevices] = useState<number>();
   const fileRef = useRef<HTMLInputElement>(null);
   const ideas = useIdeas();
   const sync = useSyncState();
@@ -24,6 +27,7 @@ export function Settings() {
   useEffect(() => {
     getSettings().then(setS);
     getSpeechPrefs().then(setSpeech);
+    auth.sessionCount().then(setDevices, () => setDevices(undefined));
     audioMeta().then((a) => setAudioMb(a.reduce((n, x) => n + x.size, 0) / 1024 / 1024));
     navigator.storage?.persisted?.().then(setPersisted);
   }, [ideas]);
@@ -40,6 +44,36 @@ export function Settings() {
       setHealth(null);
       setMsg(`Could not connect: ${(e as Error).message}`);
     }
+  }
+
+  async function signOut() {
+    await auth.logout().catch(() => undefined);
+    window.dispatchEvent(new Event("xoba:signedout"));
+    setS(await getSettings());
+    setMsg("Signed out. Your ideas are still on this device.");
+    void syncNow();
+  }
+
+  async function signOutAll() {
+    if (!confirm("Sign out on every device, including this one? You'll need your password to sign back in.")) return;
+    try {
+      await auth.logoutAll();
+      window.dispatchEvent(new Event("xoba:signedout"));
+      setS(await getSettings());
+      setMsg("Signed out everywhere.");
+      void syncNow();
+    } catch (e) {
+      setMsg(`Couldn't sign out everywhere: ${(e as Error).message}`);
+    }
+  }
+
+  async function signOutAndForget() {
+    if (!confirm("Sign out and remove all ideas and recordings from this device? They stay safe on the server and your other devices.")) return;
+    await auth.logout().catch(() => undefined);
+    await wipeAll();
+    emitChange();
+    location.hash = "#/";
+    location.reload();
   }
 
   async function doExport() {
@@ -65,7 +99,7 @@ export function Settings() {
       <section>
         <h2>Your data</h2>
         <p>
-          {ideas?.length ?? 0} ideas and {audioMb?.toFixed(1) ?? "…"} MB of audio on this device.
+          {ideas?.length ?? 0} {ideas?.length === 1 ? "idea" : "ideas"} and {audioMb?.toFixed(1) ?? "…"} MB of audio on this device.
           {persisted === false && " The browser may clear storage if the device runs low; export regularly."}
         </p>
         <button type="button" className="primary" onClick={doExport}>
@@ -123,28 +157,60 @@ export function Settings() {
       )}
 
       <section>
-        <h2>Sync server</h2>
-        <label>
-          Server address <span className="muted small">(leave empty if the app is served by it)</span>
-          <input type="url" value={s.serverUrl} onChange={(e) => setS({ ...s, serverUrl: e.target.value })} placeholder="https://…" />
-        </label>
-        <label>
-          App token
-          <input type="password" value={s.token} onChange={(e) => setS({ ...s, token: e.target.value })} autoComplete="off" />
-        </label>
-        <div className="row">
+        <h2>Account and sync</h2>
+        {sync.authNeeded ? (
+          <>
+            <p>This device isn't signed in, so its ideas stay here only.</p>
+            <button type="button" className="primary" onClick={() => window.dispatchEvent(new Event("xoba:signin"))}>
+              Sign in
+            </button>
+          </>
+        ) : s.token ? (
+          <>
+            <p data-testid="signed-in">
+              Signed in on this device.{" "}
+              {devices !== undefined && `${devices} device${devices === 1 ? "" : "s"} signed in.`}
+            </p>
+            <p className="muted small">
+              {sync.lastSyncAt ? `Last synced ${fmtDateTime(sync.lastSyncAt)}.` : "Not synced yet."} {sync.pending ? `${sync.pending} changes waiting.` : "Everything is synced."}
+            </p>
+            <div className="row">
+              <button type="button" onClick={() => syncNow()}>
+                Sync now
+              </button>
+              <button type="button" className="secondary" onClick={signOut}>
+                Sign out
+              </button>
+              <button type="button" className="danger" onClick={signOutAll}>
+                Sign out all devices
+              </button>
+            </div>
+            <p className="muted small">
+              Signing out keeps the ideas already on this device. Use "Sign out all devices" if you lose a phone.
+            </p>
+            <button type="button" className="link small" onClick={signOutAndForget} disabled={sync.pending > 0}>
+              Sign out and remove my ideas from this device
+            </button>
+            {sync.pending > 0 && <span className="muted small"> (wait until everything has synced)</span>}
+          </>
+        ) : (
+          <p className="muted small">This server doesn't need a sign-in. {sync.lastSyncAt ? `Last synced ${fmtDateTime(sync.lastSyncAt)}.` : ""}</p>
+        )}
+        {msg && <p role="status">{msg}</p>}
+        <details className="advanced">
+          <summary>Advanced: server address and token</summary>
+          <label>
+            Server address <span className="muted small">(leave empty if the app is served by it)</span>
+            <input type="url" value={s.serverUrl} onChange={(e) => setS({ ...s, serverUrl: e.target.value })} placeholder="https://…" />
+          </label>
+          <label>
+            Device token
+            <input type="password" value={s.token} onChange={(e) => setS({ ...s, token: e.target.value })} autoComplete="off" />
+          </label>
           <button type="button" onClick={test}>
             Save and test
           </button>
-          <button type="button" className="secondary" onClick={() => syncNow()}>
-            Sync now
-          </button>
-        </div>
-        {msg && <p role="status">{msg}</p>}
-        <p className="muted small">
-          {sync.lastSyncAt ? `Last synced ${fmtDateTime(sync.lastSyncAt)}.` : "Not synced yet."} {sync.pending ? `${sync.pending} changes waiting.` : ""}
-          {sync.lastError && ` Last problem: ${sync.lastError}`}
-        </p>
+        </details>
       </section>
 
       {(health?.ai ?? sync.ai) && (

@@ -4,6 +4,9 @@ test.skip(!process.env.SHOTS_DIR, "screenshots only on request");
 test("screenshots", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const dir = process.env.SHOTS_DIR!;
+  await page.goto("http://localhost:8792");
+  await page.getByRole("button", { name: "Sign in" }).waitFor();
+  await page.screenshot({ path: `${dir}/0-login.png` });
   await page.goto("http://localhost:8790");
   await page.getByPlaceholder("…or type it here").fill("Song idea: chorus 'rain dey fall for Lagos, ọmọ mi no worry'");
   await page.getByRole("button", { name: "Save idea" }).click();

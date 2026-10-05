@@ -32,6 +32,7 @@ export default {
         enricher: pickEnricher(vars, env.AI),
         transcriber: pickTranscriber(vars, env.AI),
         capUsd: capUsd(vars),
+        appPassword: vars.APP_PASSWORD || undefined,
         appToken: vars.APP_TOKEN || undefined,
       });
     }

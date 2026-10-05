@@ -78,3 +78,13 @@ and keep exporting from the app too.
 2. Add a **volume** mounted at `/data` and set `DATA_DIR=/data`, so ideas and audio survive redeploys.
 3. Set `APP_TOKEN` (and optionally `AI_PROVIDER`, `ANTHROPIC_API_KEY`, `TRANSCRIBE_PROVIDER`, `OPENAI_API_KEY`, `AI_MONTHLY_CAP_USD`).
 4. Generate a domain (or attach your own), open it on your phone, and enter the app token in Settings.
+
+## Signing in and syncing between devices
+
+Set `APP_PASSWORD` on the server. Each device (phone, laptop) signs in once with that
+password and gets its own device token; the server stores only a hash of each token.
+Every signed-in device syncs the same ideas and recordings. Settings → Account and sync
+has **Sign out**, **Sign out all devices** (use this if you lose a phone), and
+**Sign out and remove my ideas from this device** (for a shared computer).
+Ten wrong passwords from one address block sign-in for 15 minutes.
+`APP_TOKEN` still works as a fixed token for scripts.

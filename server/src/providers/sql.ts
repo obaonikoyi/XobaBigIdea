@@ -1,5 +1,5 @@
 import type { Idea } from "@xoba/shared";
-import type { IdeaStore, UsageRecord } from "./types.js";
+import type { IdeaStore, SessionRecord, UsageRecord } from "./types.js";
 
 /**
  * Minimal async SQL interface. Queries are written with `?` placeholders in a
@@ -28,6 +28,12 @@ const SCHEMA = [
      cost_usd DOUBLE PRECISION NOT NULL
    )`,
   `CREATE INDEX IF NOT EXISTS ai_usage_month ON ai_usage (month)`,
+  `CREATE TABLE IF NOT EXISTS sessions (
+     token_hash TEXT PRIMARY KEY,
+     created_at TEXT NOT NULL,
+     last_seen_at TEXT NOT NULL,
+     device TEXT NOT NULL
+   )`,
 ];
 
 export class SqlIdeaStore implements IdeaStore {
@@ -82,5 +88,35 @@ export class SqlIdeaStore implements IdeaStore {
       [month],
     );
     return Number(rows[0]?.total ?? 0);
+  }
+
+  async createSession(r: SessionRecord) {
+    await this.db.run(`INSERT INTO sessions (token_hash, created_at, last_seen_at, device) VALUES (?, ?, ?, ?)`, [r.tokenHash, r.createdAt, r.lastSeenAt, r.device]);
+  }
+
+  async findSession(tokenHash: string): Promise<SessionRecord | null> {
+    const rows = await this.db.all<{ token_hash: string; created_at: string; last_seen_at: string; device: string }>(
+      `SELECT token_hash, created_at, last_seen_at, device FROM sessions WHERE token_hash = ?`,
+      [tokenHash],
+    );
+    const r = rows[0];
+    return r ? { tokenHash: r.token_hash, createdAt: r.created_at, lastSeenAt: r.last_seen_at, device: r.device } : null;
+  }
+
+  async touchSession(tokenHash: string, at: string) {
+    await this.db.run(`UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?`, [at, tokenHash]);
+  }
+
+  async deleteSession(tokenHash: string) {
+    await this.db.run(`DELETE FROM sessions WHERE token_hash = ?`, [tokenHash]);
+  }
+
+  async deleteAllSessions() {
+    await this.db.run(`DELETE FROM sessions`);
+  }
+
+  async countSessions() {
+    const rows = await this.db.all<{ n: number | string }>(`SELECT COUNT(*) AS n FROM sessions`);
+    return Number(rows[0]?.n ?? 0);
   }
 }

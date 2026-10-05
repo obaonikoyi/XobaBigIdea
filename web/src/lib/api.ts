@@ -63,6 +63,37 @@ async function call(path: string, init: RequestInit = {}, timeoutMs = 30_000): P
 
 const jsonInit = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
 
+export interface AuthInfo {
+  required: boolean;
+  passwordLogin: boolean;
+}
+
+export const auth = {
+  /** Whether this server needs sign-in. Works without a token. */
+  info: async () => (await (await call("/api/auth", {}, 8000)).json()) as AuthInfo,
+  /** Sign this device in. The password is sent once; only the returned device token is kept. */
+  login: async (password: string) => {
+    const r = (await (await call("/api/login", jsonInit("POST", { password }), 15_000)).json()) as { token: string; device: string };
+    const s = await getSettings();
+    await saveSettings({ ...s, token: r.token });
+    return r;
+  },
+  logout: async () => {
+    try {
+      await call("/api/logout", { method: "POST" }, 8000);
+    } finally {
+      const s = await getSettings();
+      await saveSettings({ ...s, token: "" });
+    }
+  },
+  logoutAll: async () => {
+    await call("/api/logout-all", { method: "POST" }, 8000);
+    const s = await getSettings();
+    await saveSettings({ ...s, token: "" });
+  },
+  sessionCount: async () => ((await (await call("/api/sessions", {}, 8000)).json()) as { count: number }).count,
+};
+
 export const api = {
   health: async () => (await (await call("/api/health", {}, 8000)).json()) as HealthResponse,
   putIdea: async (idea: Idea) => (await (await call(`/api/ideas/${idea.id}`, jsonInit("PUT", idea))).json()) as Idea,

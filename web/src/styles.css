@@ -103,3 +103,12 @@ label { display: block; margin: 10px 0; }
 .mic:not(.mic-big) .live-words { flex-basis: 100%; }
 .mic:not(.mic-big) { flex-wrap: wrap; }
 label.check { display: flex; align-items: center; gap: 8px; }
+.login { max-width: 420px; margin: 0 auto; padding: 48px 16px; text-align: center; }
+.login h1 { margin: 0 0 4px; font-size: 1.6rem; }
+.login-card { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 18px 0; display: grid; gap: 10px; }
+.login-card label { margin: 0; font-weight: 600; }
+.row.nowrap { flex-wrap: nowrap; margin: 0; }
+.row.nowrap input { flex: 1; }
+.sync-badge { font-size: 0.75rem; color: var(--muted); margin-right: auto; margin-left: 8px; }
+details.advanced summary { cursor: pointer; color: var(--muted); }
+button.danger { color: var(--rec); border-color: var(--rec); background: transparent; }

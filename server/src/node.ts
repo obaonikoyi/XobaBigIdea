@@ -25,6 +25,7 @@ const api = createApp({
   enricher: pickEnricher(env),
   transcriber: pickTranscriber(env),
   capUsd: capUsd(env),
+  appPassword: env.APP_PASSWORD || undefined,
   appToken: env.APP_TOKEN || undefined,
   corsOrigin: env.CORS_ORIGIN || undefined,
 });
@@ -39,5 +40,5 @@ if (fs.existsSync(webDist)) {
 const port = Number(env.PORT || 8787);
 serve({ fetch: api.fetch, port }, () => {
   console.log(`Xoba Big Idea on http://localhost:${port}  storage=${store.name} ai=${pickEnricher(env).name} transcribe=${pickTranscriber(env).name} cap=$${capUsd(env)}/month`);
-  if (!env.APP_TOKEN) console.log("Warning: APP_TOKEN is not set, so the API is open to anyone who can reach this port.");
+  if (!env.APP_PASSWORD && !env.APP_TOKEN) console.log("Warning: APP_PASSWORD is not set, so the API is open to anyone who can reach this port.");
 });

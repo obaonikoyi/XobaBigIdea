@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { isValidIdea, type AiStatus, type ApiError, type EnrichRequest, type HealthResponse } from "@xoba/shared";
 import { SAFE_ID } from "./providers/blobs.js";
 import { ProviderError, type BlobStore, type Enricher, type IdeaStore, type Transcriber } from "./providers/types.js";
+import { describeDevice, FailureLimiter, newSessionToken, secretsMatch, sha256Hex } from "./auth.js";
 
 export interface AppDeps {
   store: IdeaStore;
@@ -11,7 +12,9 @@ export interface AppDeps {
   transcriber: Transcriber;
   /** Monthly AI spending cap in USD. 0 turns AI off. */
   capUsd: number;
-  /** Shared secret. If set, every /api request needs `Authorization: Bearer <token>`. */
+  /** Password for signing in on a device. Each sign-in gets its own session token. */
+  appPassword?: string;
+  /** Optional fixed token (for scripts or older setups). Also accepted as a bearer token. */
   appToken?: string;
   corsOrigin?: string;
   now?: () => Date;
@@ -35,12 +38,69 @@ export function createApp(deps: AppDeps) {
 
   app.get("/api/ping", (c) => c.json({ ok: true }));
 
-  app.use("/api/*", async (c, next) => {
-    if (deps.appToken && c.req.header("Authorization") !== `Bearer ${deps.appToken}`) {
-      return c.json(err("unauthorized", "Missing or wrong app token"), 401);
+  // ---- Sign in ----
+
+  const authRequired = !!(deps.appPassword || deps.appToken);
+  const limiter = new FailureLimiter();
+  const clientKey = (c: { req: { header(n: string): string | undefined } }) =>
+    c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for")?.split(",")[0].trim() || "local";
+
+  app.get("/api/auth", (c) => c.json({ required: authRequired, passwordLogin: !!deps.appPassword }));
+
+  app.post("/api/login", async (c) => {
+    if (!deps.appPassword) return c.json(err("bad_request", "Password sign-in is not set up on this server (APP_PASSWORD)"), 400);
+    const key = clientKey(c);
+    const t = now().getTime();
+    if (limiter.blocked(key, t)) return c.json(err("unauthorized", "Too many wrong passwords. Try again in 15 minutes."), 429);
+    let password = "";
+    try {
+      password = String((await c.req.json<{ password?: string }>()).password ?? "");
+    } catch {
+      /* empty body */
     }
-    await next();
+    if (!password || !(await secretsMatch(password, deps.appPassword))) {
+      limiter.fail(key, t);
+      return c.json(err("unauthorized", "Wrong password"), 401);
+    }
+    limiter.clear(key);
+    const token = newSessionToken();
+    const at = now().toISOString();
+    const device = describeDevice(c.req.header("User-Agent"));
+    await deps.store.createSession({ tokenHash: await sha256Hex(token), createdAt: at, lastSeenAt: at, device });
+    return c.json({ token, device });
   });
+
+  app.use("/api/*", async (c, next) => {
+    if (!authRequired) return next();
+    const header = c.req.header("Authorization") ?? "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+    if (token && deps.appToken && (await secretsMatch(token, deps.appToken))) return next();
+    if (token) {
+      const hash = await sha256Hex(token);
+      const s = await deps.store.findSession(hash);
+      if (s) {
+        // Record when each device was last seen, at most once an hour.
+        const at = now();
+        if (at.getTime() - new Date(s.lastSeenAt).getTime() > 3_600_000) await deps.store.touchSession(hash, at.toISOString());
+        c.set("sessionHash" as never, hash as never);
+        return next();
+      }
+    }
+    return c.json(err("unauthorized", "Please sign in"), 401);
+  });
+
+  app.post("/api/logout", async (c) => {
+    const hash = c.get("sessionHash" as never) as string | undefined;
+    if (hash) await deps.store.deleteSession(hash);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/logout-all", async (c) => {
+    await deps.store.deleteAllSessions();
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/sessions", async (c) => c.json({ count: await deps.store.countSessions() }));
 
   async function aiStatus(): Promise<AiStatus> {
     const monthUsd = await deps.store.monthSpendUsd(month());

@@ -1,10 +1,10 @@
 // Background work: push local changes, pull changes from other devices, upload
 // audio, then (only if AI is available and under the cap) transcribe and enrich.
 // Nothing here ever blocks capture, browsing or replay.
-import type { AiStatus, Idea } from "@xoba/shared";
+import { CHAT_HISTORY_LIMIT, type AiStatus, type Idea } from "@xoba/shared";
 import * as db from "./db";
 import { api, ApiError, auth, getSettings } from "./api";
-import { applyEnrichment, setTranscript } from "./ideas";
+import { applyEnrichment, applyTake, markTakeFailed, setTranscript, wordsFor } from "./ideas";
 import { emitChange } from "./events";
 import { whisperLanguage } from "@xoba/shared";
 import { getSpeechPrefs } from "./prefs";
@@ -101,9 +101,7 @@ export async function processAi(ai: AiStatus) {
   if (!ai.enrich.available) return;
   for (const idea of await db.allIdeas()) {
     if (!needsEnrichment(idea)) continue;
-    const words = idea.entries
-      .map((e) => ({ kind: e.kind, question: e.question, text: [e.text, e.transcript].filter((t) => t && t.trim()).join("\n") }))
-      .filter((w) => w.text);
+    const words = wordsFor(idea);
     try {
       const r = await api.enrich({ words, wantQuestions: !idea.ai && idea.followUps.length === 0 });
       await applyEnrichment(idea.id, r, idea.entries.length);
@@ -115,6 +113,31 @@ export async function processAi(ai: AiStatus) {
       } else throw err;
     }
   }
+  for (const idea of await db.allIdeas()) {
+    if (!needsTake(idea)) continue;
+    const basedOn = idea.entries.length;
+    try {
+      const r = await api.take({
+        words: wordsFor(idea),
+        title: idea.title.value || undefined,
+        type: idea.type.value,
+        chat: (idea.chat ?? []).slice(-CHAT_HISTORY_LIMIT).map((m) => ({ role: m.role, text: m.text })),
+      });
+      await applyTake(idea.id, r, basedOn);
+    } catch (err) {
+      if (err instanceof ApiError && err.aiUnavailable) return;
+      if (err instanceof ApiError && err.status === 422) await markTakeFailed(idea.id, basedOn);
+      else throw err;
+    }
+  }
+}
+
+/** A take is written once the words are in, and rewritten when new thoughts are added. Archived ideas are left alone. */
+export function needsTake(idea: Idea) {
+  if (idea.status === "archived") return false;
+  if (idea.take && idea.take.basedOnEntries >= idea.entries.length) return false;
+  if (idea.entries.some((e) => e.transcriptStatus === "pending")) return false;
+  return wordsFor(idea).length > 0;
 }
 
 let running: Promise<void> | null = null;

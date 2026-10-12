@@ -33,8 +33,9 @@ server checks this month's recorded spend and refuses once it has reached the
 cap. The check runs before the call, so the last call can go past the cap by at
 most its own cost (about a cent). Costs are estimated from the provider's reported token usage or the audio length:
 
-- Anthropic: priced per token for the configured model (`claude-opus-5` by default,
-  $5 / $25 per million input/output tokens). A card costs roughly 1–2 cents.
+- Anthropic: priced per token for the configured model (`claude-opus-5-5` by default,
+  $4 / $20 per million input/output tokens). A card costs about a cent; an AI take
+  or a chat reply a few cents each (the model thinks before answering, and thinking is billed as output).
   Override the model with `ANTHROPIC_MODEL`, and prices with `ANTHROPIC_PRICE_IN/OUT`.
   Requests opt in to Anthropic's server-side refusal fallback (`fallbacks: "default"`).
 - OpenAI Whisper: $0.006 per audio minute. Files over 25 MB are not sent (the audio is still kept).

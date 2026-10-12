@@ -25,6 +25,11 @@ This project is separate from xobametrics. It imports nothing from it and does n
 - **Idea card**: title, type and summary, each tagged *AI suggestion* or
   *Yours*. Once you edit a field the AI never touches it again. Priority stays
   **Not set** until you choose one. Your words are listed underneath with the date, audio and transcript.
+- **AI take**: every idea gets an honest read from the AI: what you mean, what's
+  strong, risks and gaps, a straight opinion, and next steps. It updates when you add a
+  thought, and is shown apart from your words, which it never changes.
+- **Talk it through**: chat with the AI about any idea. The conversation is saved
+  with the idea and syncs to your other devices.
 - **Follow-up questions**: after saving, at most 2 optional questions, always with
   **Leave for later**. Answers (typed or spoken) are stored as your words.
 - **Library**: search (accent-insensitive, so Yoruba tone marks don't get in

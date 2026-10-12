@@ -19,6 +19,11 @@ when a token is configured. Errors are JSON: `{ "error": code, "message": text }
 | `GET /api/audio/:id` | | the original bytes with their mime type |
 | `POST /api/transcribe/:audioId?durationMs=` | | `{ text, provider }`, verbatim from the speech-to-text provider |
 | `POST /api/enrich` | `{ words: [{kind, text, question?}], wantQuestions }` | `{ title, type, summary, questions (≤2), provider }` |
+| `POST /api/take` | `{ words, title?, type?, chat?: [{role: "me"\|"ai", text}] }` | `{ whatYouMean, strengths[], risks[], opinion, nextSteps[], provider }`: the AI's honest read on the idea |
+| `POST /api/chat` | `{ words, title?, type?, take?, messages: [{role: "me"\|"ai", text}] }` (last message must be `me`; only the last 40 are used) | `{ reply, provider }` |
+
+The take and the chat are stored on the idea (`idea.take`, `idea.chat`) by the client, so they sync like any other change.
+They never touch `entries`: the user's own words stay exactly as captured.
 
 AI endpoints return:
 

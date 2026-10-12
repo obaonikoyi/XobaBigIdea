@@ -1,7 +1,17 @@
 import type { Ai } from "@cloudflare/workers-types";
-import type { EnrichRequest } from "@xoba/shared";
+import type { ChatRequest, EnrichRequest, TakeRequest } from "@xoba/shared";
 import { ProviderError, type Enricher, type Transcriber } from "./types.js";
-import { ENRICH_JSON_SCHEMA, enrichSystemPrompt, enrichUserMessage, normalizeEnrich } from "./prompt.js";
+import {
+  ENRICH_JSON_SCHEMA,
+  TAKE_JSON_SCHEMA,
+  TAKE_SYSTEM,
+  chatSystemPrompt,
+  enrichSystemPrompt,
+  enrichUserMessage,
+  normalizeEnrich,
+  normalizeTake,
+  takeUserMessage,
+} from "./prompt.js";
 
 // Workers AI bills in neurons at USD 0.011 per 1,000 with 10,000 free per day.
 // These are rough per-call estimates so the spending cap still means something.
@@ -54,6 +64,39 @@ export function workersAiEnricher(ai: Ai | undefined, model = DEFAULT_LLM): Enri
         return { result: normalizeEnrich(out.response, `workers-ai:${model}`, req.wantQuestions), costUsd: LLM_USD_PER_CALL };
       } catch (err) {
         throw new ProviderError(`Workers AI enrich failed: ${(err as Error).message}`);
+      }
+    },
+    async take(req: TakeRequest) {
+      if (!ai) throw new ProviderError("Workers AI binding missing", false);
+      try {
+        const out = (await ai.run(model as never, {
+          messages: [
+            { role: "system", content: TAKE_SYSTEM + "\nReply with JSON only." },
+            { role: "user", content: takeUserMessage(req) },
+          ],
+          response_format: { type: "json_schema", json_schema: TAKE_JSON_SCHEMA },
+          max_tokens: 1500,
+        } as never)) as { response?: unknown };
+        return { result: { ...normalizeTake(out.response), provider: `workers-ai:${model}` }, costUsd: LLM_USD_PER_CALL };
+      } catch (err) {
+        throw new ProviderError(`Workers AI take failed: ${(err as Error).message}`);
+      }
+    },
+    async chat(req: ChatRequest) {
+      if (!ai) throw new ProviderError("Workers AI binding missing", false);
+      try {
+        const out = (await ai.run(model as never, {
+          messages: [
+            { role: "system", content: chatSystemPrompt(req) },
+            ...req.messages.map((m) => ({ role: m.role === "me" ? "user" : "assistant", content: m.text })),
+          ],
+          max_tokens: 1500,
+        } as never)) as { response?: unknown };
+        const reply = String(out.response ?? "").trim();
+        if (!reply) throw new Error("empty reply");
+        return { result: { reply, provider: `workers-ai:${model}` }, costUsd: LLM_USD_PER_CALL };
+      } catch (err) {
+        throw new ProviderError(`Workers AI chat failed: ${(err as Error).message}`);
       }
     },
   };

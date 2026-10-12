@@ -207,3 +207,33 @@ test("10. 'Not now' keeps the app usable on this device without signing in", asy
   await captureText(page, "Captured before signing in");
   await expect(page.getByTestId("statusbar")).toContainText("Not signed in");
 });
+
+test("11. every idea gets an AI take, and I can talk it through; my words stay mine", async ({ page }) => {
+  await page.goto(AI);
+  await captureText(page, "Okada booking app wey go cheap for students");
+  await page.getByRole("button", { name: "Open card" }).click();
+  const take = page.getByRole("region", { name: "AI take" });
+  await expect(take).toContainText("What you mean");
+  await expect(take).toContainText("Okada booking app");
+  await expect(take).toContainText("My opinion");
+  await expect(take).toContainText("Next steps");
+
+  const chat = page.getByRole("region", { name: "Talk it through" });
+  await chat.getByLabel("Message to the AI").fill("Who would pay for this?");
+  await chat.getByRole("button", { name: "Send" }).click();
+  await expect(chat.getByTestId("chat-me")).toHaveText(/Who would pay for this\?/);
+  await expect(chat.getByTestId("chat-ai")).toContainText("What would make this worth doing first?");
+
+  // Both survive a reload, and the original capture is untouched.
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Talk it through" }).getByTestId("chat-ai")).toHaveCount(1);
+  await expect(page.getByTestId("entry").first()).toContainText("Okada booking app wey go cheap for students");
+});
+
+test("12. with AI off, the take and chat wait politely and capture still works", async ({ page }) => {
+  await page.goto(NO_AI);
+  await captureText(page, "Idea while the AI is off");
+  await page.getByRole("button", { name: "Open card" }).click();
+  await expect(page.getByRole("region", { name: "AI take" })).toContainText("appears here when AI is switched on");
+  await expect(page.getByLabel("Message to the AI")).toBeDisabled();
+});

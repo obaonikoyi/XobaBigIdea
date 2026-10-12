@@ -1,6 +1,17 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { isValidIdea, type AiStatus, type ApiError, type EnrichRequest, type HealthResponse } from "@xoba/shared";
+import {
+  CHAT_HISTORY_LIMIT,
+  isIdeaType,
+  isValidIdea,
+  type AiStatus,
+  type ApiError,
+  type ChatRequest,
+  type EnrichRequest,
+  type HealthResponse,
+  type TakeRequest,
+} from "@xoba/shared";
+import { normalizeTake } from "./providers/prompt.js";
 import { SAFE_ID } from "./providers/blobs.js";
 import { ProviderError, type BlobStore, type Enricher, type IdeaStore, type Transcriber } from "./providers/types.js";
 import { describeDevice, FailureLimiter, newSessionToken, secretsMatch, sha256Hex } from "./auth.js";
@@ -25,6 +36,31 @@ const MAX_IDEA_BYTES = 2 * 1024 * 1024;
 
 function err(error: ApiError["error"], message: string): ApiError {
   return { error, message };
+}
+
+/** The user's words for an idea, clamped. Empty entries are dropped. */
+function cleanWords(raw: unknown): EnrichRequest["words"] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .slice(0, 50)
+    .map((w) => ({ kind: w?.kind, text: String(w?.text ?? "").slice(0, 20_000), question: w?.question ? String(w.question).slice(0, 300) : undefined }))
+    .filter((w) => w.text.trim());
+}
+
+function cleanChat(raw: unknown): { role: "me" | "ai"; text: string }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .slice(-CHAT_HISTORY_LIMIT)
+    .map((m) => ({ role: m?.role === "ai" ? ("ai" as const) : ("me" as const), text: String(m?.text ?? "").slice(0, 8000) }))
+    .filter((m) => m.text.trim());
+}
+
+/** Title and type the user (or AI) gave the idea, as context for the AI. */
+function cleanCard(body: { title?: unknown; type?: unknown }) {
+  return {
+    title: typeof body.title === "string" && body.title.trim() ? body.title.slice(0, 200) : undefined,
+    type: isIdeaType(body.type) ? body.type : undefined,
+  };
 }
 
 export function createApp(deps: AppDeps) {
@@ -116,9 +152,9 @@ export function createApp(deps: AppDeps) {
   }
 
   /** Runs a paid call only if under the cap, and records what it cost. */
-  async function withBudget<T>(kind: "enrich" | "transcribe", provider: string, fn: () => Promise<{ result: T; costUsd: number }>) {
+  async function withBudget<T>(kind: "enrich" | "take" | "chat" | "transcribe", provider: string, fn: () => Promise<{ result: T; costUsd: number }>) {
     const status = await aiStatus();
-    const s = kind === "enrich" ? status.enrich : status.transcribe;
+    const s = kind === "transcribe" ? status.transcribe : status.enrich;
     if (!s.available) {
       return { ok: false as const, status: status.spend.overCap || deps.capUsd <= 0 ? 402 : 503, body: err(status.spend.overCap || deps.capUsd <= 0 ? "over_cap" : "ai_unavailable", s.reason ?? "unavailable") };
     }
@@ -222,13 +258,47 @@ export function createApp(deps: AppDeps) {
     } catch {
       return c.json(err("bad_request", "Invalid JSON"), 400);
     }
-    if (!Array.isArray(body?.words) || body.words.length === 0) return c.json(err("bad_request", "No words"), 400);
-    const words = body.words
-      .slice(0, 50)
-      .map((w) => ({ kind: w.kind, text: String(w.text ?? "").slice(0, 20_000), question: w.question ? String(w.question).slice(0, 300) : undefined }))
-      .filter((w) => w.text.trim());
+    const words = cleanWords(body?.words);
     if (words.length === 0) return c.json(err("bad_request", "No words"), 400);
     const r = await withBudget("enrich", deps.enricher.name, () => deps.enricher.enrich({ words, wantQuestions: !!body.wantQuestions }));
+    return r.ok ? c.json(r.result) : c.json(r.body, r.status as 402);
+  });
+
+  app.post("/api/take", async (c) => {
+    let body: TakeRequest;
+    try {
+      body = await c.req.json<TakeRequest>();
+    } catch {
+      return c.json(err("bad_request", "Invalid JSON"), 400);
+    }
+    const words = cleanWords(body?.words);
+    if (words.length === 0) return c.json(err("bad_request", "No words"), 400);
+    const chat = cleanChat(body.chat);
+    const req: TakeRequest = { words, ...cleanCard(body), ...(chat.length ? { chat } : {}) };
+    const r = await withBudget("take", deps.enricher.name, () => deps.enricher.take(req));
+    return r.ok ? c.json(r.result) : c.json(r.body, r.status as 402);
+  });
+
+  app.post("/api/chat", async (c) => {
+    let body: ChatRequest;
+    try {
+      body = await c.req.json<ChatRequest>();
+    } catch {
+      return c.json(err("bad_request", "Invalid JSON"), 400);
+    }
+    const words = cleanWords(body?.words);
+    if (words.length === 0) return c.json(err("bad_request", "No words"), 400);
+    const messages = cleanChat(body.messages);
+    while (messages.length && messages[0].role !== "me") messages.shift();
+    if (messages.length === 0 || messages[messages.length - 1].role !== "me") return c.json(err("bad_request", "Send a message first"), 400);
+    let take;
+    try {
+      take = body.take ? normalizeTake(body.take) : undefined;
+    } catch {
+      take = undefined;
+    }
+    const req: ChatRequest = { words, ...cleanCard(body), messages, ...(take ? { take } : {}) };
+    const r = await withBudget("chat", deps.enricher.name, () => deps.enricher.chat(req));
     return r.ok ? c.json(r.result) : c.json(r.body, r.status as 402);
   });
 

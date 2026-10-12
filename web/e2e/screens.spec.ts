@@ -13,7 +13,10 @@ test("screenshots", async ({ page }) => {
   await page.getByText("What sparked this idea?").waitFor();
   await page.screenshot({ path: `${dir}/1-capture.png`, fullPage: true });
   await page.getByRole("button", { name: "Open card" }).click();
-  await page.waitForTimeout(300);
+  await page.getByText("My opinion").waitFor();
+  await page.getByLabel("Message to the AI").fill("Who would this song be for?");
+  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByTestId("chat-ai").waitFor();
   await page.screenshot({ path: `${dir}/2-card.png`, fullPage: true });
   await page.goto("http://localhost:8790/#/library");
   await page.waitForTimeout(300);

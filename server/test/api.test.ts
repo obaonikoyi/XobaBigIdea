@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, makeIdea } from "./helpers.js";
-import { noEnricher, noTranscriber } from "../src/providers/offline.js";
+import { fakeEnricher, noEnricher, noTranscriber } from "../src/providers/offline.js";
 import { ProviderError, type Enricher } from "../src/providers/types.js";
 
 describe("ideas sync", () => {
@@ -104,13 +104,10 @@ describe("AI and the spending cap", () => {
   });
 
   it("turns provider crashes into a clean error", async () => {
-    const broken: Enricher = {
-      name: "broken",
-      unavailableReason: () => undefined,
-      enrich: async () => {
-        throw new ProviderError("upstream 529");
-      },
+    const crash = async (): Promise<never> => {
+      throw new ProviderError("upstream 529");
     };
+    const broken: Enricher = { name: "broken", unavailableReason: () => undefined, enrich: crash, take: crash, chat: crash };
     const { call, json } = await makeApp({ enricher: broken });
     const res = await call("/api/enrich", json("POST", enrichBody));
     expect(res.status).toBe(503);
@@ -145,5 +142,58 @@ describe("transcription language hint", () => {
     await call("/api/transcribe/a1?language=../../x", { method: "POST" });
     await call("/api/transcribe/a1", { method: "POST" });
     expect(seen).toEqual(["yo", undefined, undefined]);
+  });
+});
+
+describe("AI take and chat", () => {
+  const words = [{ kind: "capture", text: "Okada app for Lagos, abeg make e cheap" }];
+
+  it("returns a take, passes title, type and chat along, and records spend", async () => {
+    const seen: unknown[] = [];
+    const fake = fakeEnricher();
+    const { call, json, store } = await makeApp({
+      enricher: { ...fake, take: async (req) => (seen.push(req), fake.take(req)) },
+    });
+    const res = await call("/api/take", json("POST", { words, title: "Okada app", type: "app", chat: [{ role: "me", text: "It is for students" }, { role: "x", text: "" }] }));
+    expect(res.status).toBe(200);
+    const take = await res.json();
+    expect(take.whatYouMean).toContain("Okada");
+    expect(take.strengths.length).toBeGreaterThan(0);
+    expect(take.nextSteps.length).toBeGreaterThan(0);
+    expect(seen[0]).toMatchObject({ title: "Okada app", type: "app", chat: [{ role: "me", text: "It is for students" }] });
+    expect(await store.monthSpendUsd(new Date().toISOString().slice(0, 7))).toBeCloseTo(0.01);
+  });
+
+  it("rejects a take with no words", async () => {
+    const { call, json } = await makeApp();
+    expect((await call("/api/take", json("POST", { words: [{ kind: "capture", text: "  " }] }))).status).toBe(400);
+  });
+
+  it("replies in chat and only when the last message is mine", async () => {
+    const { call, json } = await makeApp();
+    const ok = await call("/api/chat", json("POST", { words, messages: [{ role: "me", text: "Who would pay for this?" }] }));
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).reply).toContain("Who would pay");
+    const bad = await call("/api/chat", json("POST", { words, messages: [{ role: "me", text: "hi" }, { role: "ai", text: "hello" }] }));
+    expect(bad.status).toBe(400);
+  });
+
+  it("sends at most the recent chat history, starting with my message", async () => {
+    const seen: { messages: { role: string }[] }[] = [];
+    const fake = fakeEnricher();
+    const { call, json } = await makeApp({ enricher: { ...fake, chat: async (req) => (seen.push(req), fake.chat(req)) } });
+    const messages = Array.from({ length: 81 }, (_, i) => ({ role: i % 2 === 0 ? "me" : "ai", text: `m${i}` }));
+    expect((await call("/api/chat", json("POST", { words, messages }))).status).toBe(200);
+    expect(seen[0].messages.length).toBeLessThanOrEqual(40);
+    expect(seen[0].messages[0].role).toBe("me");
+  });
+
+  it("take and chat obey the cap and work without breaking capture when AI is off", async () => {
+    const { call, json } = await makeApp({ capUsd: 0 });
+    expect((await call("/api/take", json("POST", { words }))).status).toBe(402);
+    expect((await call("/api/chat", json("POST", { words, messages: [{ role: "me", text: "hi" }] }))).status).toBe(402);
+    const off = await makeApp({ enricher: noEnricher() });
+    expect((await off.call("/api/take", off.json("POST", { words }))).status).toBe(503);
+    expect((await off.call("/api/ideas/idea1", off.json("PUT", makeIdea()))).status).toBe(200);
   });
 });

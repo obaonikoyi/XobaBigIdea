@@ -104,7 +104,67 @@ export interface Idea {
   entries: Entry[];
   followUps: FollowUp[];
   ai?: AiInfo;
+  /** The AI's honest read on the idea. Kept apart from the user's words and replaced when refreshed. */
+  take?: AiTake;
+  /** "Talk it through" conversation about this idea, oldest first. */
+  chat?: ChatMessage[];
   lastReviewedAt?: string;
+}
+
+/** The parts of an AI take that the model writes. */
+export interface TakeContent {
+  /** What the person is getting at, in plain words. */
+  whatYouMean: string;
+  strengths: string[];
+  risks: string[];
+  /** A straight opinion: is it worth pursuing, and why. */
+  opinion: string;
+  nextSteps: string[];
+}
+
+export interface TakeResult extends TakeContent {
+  provider: string;
+}
+
+export interface AiTake extends TakeResult {
+  generatedAt: string;
+  /** Number of entries the take was based on, so the app knows when it is out of date. */
+  basedOnEntries: number;
+  /** True when the AI could not write a take for this idea (so the app stops retrying on its own). */
+  failed?: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "me" | "ai";
+  text: string;
+  at: string;
+  provider?: string;
+}
+
+/** Most chat turns sent to the AI at once; older ones are dropped from the request, never from the idea. */
+export const CHAT_HISTORY_LIMIT = 40;
+
+export interface TakeRequest {
+  words: EnrichRequest["words"];
+  title?: string;
+  type?: IdeaType;
+  /** Recent conversation, so clarifications made in chat shape the take. */
+  chat?: { role: ChatMessage["role"]; text: string }[];
+}
+
+export interface ChatRequest {
+  words: EnrichRequest["words"];
+  title?: string;
+  type?: IdeaType;
+  take?: TakeContent;
+  /** The conversation so far, oldest first. The last message must be from "me". */
+  messages: { role: ChatMessage["role"]; text: string }[];
+}
+
+export interface ChatResult {
+  reply: string;
+  provider: string;
 }
 
 export interface EnrichRequest {

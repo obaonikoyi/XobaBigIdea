@@ -7,6 +7,8 @@ import { syncNow } from "../lib/sync";
 import { AudioPlayer } from "../components/AudioPlayer";
 import { MicButton } from "../components/MicButton";
 import { FollowUps } from "../components/FollowUps";
+import { AiTake } from "../components/AiTake";
+import { IdeaChat } from "../components/IdeaChat";
 
 const PRIORITIES: { value: Priority; label: string }[] = [
   { value: null, label: "Not set" },
@@ -172,6 +174,9 @@ export function IdeaCard({ id }: { id: string }) {
       </section>
 
       <FollowUps idea={idea} includeLater />
+
+      <AiTake idea={idea} />
+      <IdeaChat idea={idea} />
 
       <section className="words-section" aria-label="Your words">
         <h3>Your words</h3>

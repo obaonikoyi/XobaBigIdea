@@ -1,6 +1,6 @@
 // Everything that changes an idea goes through here. Each change is saved to
 // IndexedDB immediately and queued for sync.
-import type { EnrichResult, Entry, FollowUp, Idea, IdeaStatus, IdeaType, Priority } from "@xoba/shared";
+import type { ChatMessage, EnrichRequest, EnrichResult, Entry, FollowUp, Idea, IdeaStatus, IdeaType, Priority, TakeResult } from "@xoba/shared";
 import * as db from "./db";
 import { emitChange } from "./events";
 
@@ -133,6 +133,43 @@ export function applyEnrichment(ideaId: string, r: EnrichResult, basedOnEntries:
     }
     i.ai = { generatedAt: now().toISOString(), provider: r.provider, basedOnEntries };
   });
+}
+
+/** Store a fresh AI take. It replaces the old one; the user's words are untouched. */
+export function applyTake(ideaId: string, r: TakeResult, basedOnEntries: number) {
+  return update(ideaId, (i) => {
+    i.take = { ...r, generatedAt: now().toISOString(), basedOnEntries };
+  });
+}
+
+/** The AI could not write a take: remember that so the app stops retrying on its own. */
+export function markTakeFailed(ideaId: string, basedOnEntries: number) {
+  return update(ideaId, (i) => {
+    const prev = i.take;
+    i.take = prev
+      ? { ...prev, failed: true, basedOnEntries }
+      : { whatYouMean: "", strengths: [], risks: [], opinion: "", nextSteps: [], provider: "skipped", generatedAt: now().toISOString(), basedOnEntries, failed: true };
+  });
+}
+
+/** Ask for a new take on the next sync, even if nothing changed. */
+export function requestNewTake(ideaId: string) {
+  return update(ideaId, (i) => {
+    if (i.take) i.take = { ...i.take, basedOnEntries: -1, failed: false };
+  });
+}
+
+export function addChatMessage(ideaId: string, role: ChatMessage["role"], text: string, provider?: string) {
+  return update(ideaId, (i) => {
+    i.chat = [...(i.chat ?? []), { id: newId(), role, text, at: now().toISOString(), ...(provider ? { provider } : {}) }];
+  });
+}
+
+/** The user's words for an idea, oldest first, as the AI receives them. */
+export function wordsFor(idea: Idea): EnrichRequest["words"] {
+  return idea.entries
+    .map((e) => ({ kind: e.kind, question: e.question, text: [e.text, e.transcript].filter((t) => t && t.trim()).join("\n") }))
+    .filter((w) => w.text);
 }
 
 export function answerFollowUp(ideaId: string, followUpId: string, answer: CaptureInput) {

@@ -1,4 +1,4 @@
-import type { EnrichRequest, EnrichResult, Idea, TranscribeResult } from "@xoba/shared";
+import type { ChatRequest, ChatResult, EnrichRequest, EnrichResult, Idea, TakeRequest, TakeResult, TranscribeResult } from "@xoba/shared";
 
 /** Where idea records live (SQLite, Postgres, Cloudflare D1, ...). */
 export interface IdeaStore {
@@ -33,7 +33,7 @@ export interface UsageRecord {
   id: string;
   at: string;
   month: string; // YYYY-MM
-  kind: "enrich" | "transcribe";
+  kind: "enrich" | "take" | "chat" | "transcribe";
   provider: string;
   costUsd: number;
 }
@@ -65,6 +65,10 @@ export interface Enricher {
   readonly name: string;
   unavailableReason(): string | undefined;
   enrich(req: EnrichRequest): Promise<ProviderResult<EnrichResult>>;
+  /** A considered read on the idea: what it is, strengths, risks, an opinion and next steps. */
+  take(req: TakeRequest): Promise<ProviderResult<TakeResult>>;
+  /** One reply in a conversation about the idea. */
+  chat(req: ChatRequest): Promise<ProviderResult<ChatResult>>;
 }
 
 export class ProviderError extends Error {

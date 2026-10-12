@@ -1,6 +1,6 @@
 // HTTP client for the backend. The backend is swappable: anything that speaks
 // docs/API.md works (the bundled Node server, Cloudflare Worker, or a FastAPI port).
-import type { EnrichRequest, EnrichResult, HealthResponse, Idea, TranscribeResult } from "@xoba/shared";
+import type { ChatRequest, ChatResult, EnrichRequest, EnrichResult, HealthResponse, Idea, TakeRequest, TakeResult, TranscribeResult } from "@xoba/shared";
 import * as db from "./db";
 
 export interface Settings {
@@ -110,4 +110,6 @@ export const api = {
       await call(`/api/transcribe/${audioId}?durationMs=${Math.round(durationMs)}${language ? `&language=${language}` : ""}`, { method: "POST" }, 300_000)
     ).json()) as TranscribeResult,
   enrich: async (req: EnrichRequest) => (await (await call("/api/enrich", jsonInit("POST", req), 120_000)).json()) as EnrichResult,
+  take: async (req: TakeRequest) => (await (await call("/api/take", jsonInit("POST", req), 180_000)).json()) as TakeResult,
+  chat: async (req: ChatRequest) => (await (await call("/api/chat", jsonInit("POST", req), 180_000)).json()) as ChatResult,
 };
